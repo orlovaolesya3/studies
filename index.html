@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Тренажёр">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%236366f1'/%3E%3Cpath d='M16 7v18M7 16h18M9.6 9.6l12.8 12.8M22.4 9.6L9.6 22.4' stroke='white' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <title>Тренажёр</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <div class="boot">Загрузка приложения…</div>
+  </div>
+
+  <script>
+    window.LESSONS = [];
+    window.registerLesson = function (lesson) {
+      window.LESSONS.push(lesson);
+    };
+  </script>
+
+  <script src="lessons/calc-asym-01.js"></script>
+  <script src="lessons/calc-bigo-01.js"></script>
+  <script src="lessons/calc-bounds-01.js"></script>
+  <script src="lessons/calc-cauchyfun-01.js"></script>
+  <script src="lessons/calc-cauchyseq-01.js"></script>
+  <script src="lessons/calc-complex-01.js"></script>
+  <script src="lessons/calc-cont-01.js"></script>
+  <script src="lessons/calc-conttheor-01.js"></script>
+  <script src="lessons/calc-convex-01.js"></script>
+  <script src="lessons/calc-deriv-01.js"></script>
+  <script src="lessons/calc-derivprop-01.js"></script>
+  <script src="lessons/calc-derivtable-01.js"></script>
+  <script src="lessons/calc-diff-01.js"></script>
+  <script src="lessons/calc-extr-01.js"></script>
+  <script src="lessons/calc-fermatpoly-01.js"></script>
+  <script src="lessons/calc-flim-01.js"></script>
+  <script src="lessons/calc-flim-02.js"></script>
+  <script src="lessons/calc-flim-03.js"></script>
+  <script src="lessons/calc-inv-01.js"></script>
+  <script src="lessons/calc-lhopital-01.js"></script>
+  <script src="lessons/calc-monoe-01.js"></script>
+  <script src="lessons/calc-nested-01.js"></script>
+  <script src="lessons/calc-paramderiv-01.js"></script>
+  <script src="lessons/calc-remark-01.js"></script>
+  <script src="lessons/calc-seqinf-01.js"></script>
+  <script src="lessons/calc-seqlim-01.js"></script>
+  <script src="lessons/calc-seqlim-02.js"></script>
+  <script src="lessons/calc-sets-01.js"></script>
+  <script src="lessons/calc-smallbig-01.js"></script>
+  <script src="lessons/calc-subseq-01.js"></script>
+  <script src="lessons/calc-taylor-01.js"></script>
+  <script src="lessons/calc-taylorderiv-01.js"></script>
+  <script src="lessons/calc-theor-01.js"></script>
+  <script src="lessons/calc-unicont-01.js"></script>
+
+  <script src="sync-config.js"></script>
+
+  <script src="app.js"></script>
+  <script>
+    setTimeout(function () {
+      var boot = document.querySelector('#app .boot');
+      if (boot) {
+        boot.textContent = 'Не загрузился app.js. Проверьте, что index.html, style.css, app.js и папка lessons лежат рядом.';
+      }
+    }, 1500);
+  </script>
+</body>
+</html>
