@@ -115,12 +115,10 @@
     var cfg = window.SYNC || {};
     var base = {
       apikey: cfg.key,
-      'Content-Type': 'application/json'
+      Authorization: 'Bearer ' + cfg.key,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
     };
-    // старые anon-ключи (JWT) требуют Authorization, новые publishable — тоже поддерживают
-    if (String(cfg.key).indexOf('eyJ') === 0) {
-      base.Authorization = 'Bearer ' + cfg.key;
-    }
     return Object.assign(base, extra || {});
   }
 
@@ -138,8 +136,10 @@
     refreshSyncBadge();
     return fetch(url, { headers: cloudHeaders(), cache: 'no-store' })
       .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
+        if (!r.ok) return r.text().then(function (t) {
+          throw new Error('HTTP ' + r.status + (t ? ' · ' + t.slice(0, 160) : ''));
+        });
+        return r.json().catch(function () { return []; });
       })
       .then(function (rows) {
         if (rows && rows.length && rows[0].data) mergeRemote(rows[0].data);
@@ -166,7 +166,9 @@
       headers: cloudHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
       body: JSON.stringify(body)
     }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) return r.text().then(function (t) {
+        throw new Error('HTTP ' + r.status + (t ? ' · ' + t.slice(0, 160) : ''));
+      });
       sync.status = 'synced';
       sync.error = '';
       refreshSyncBadge();
