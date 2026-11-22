@@ -15,6 +15,7 @@
   var reviewMode = false;
   var lesson = null;
   var libraryQuery = '';
+  var subjectFilter = '';
   var timerId = null;
   var sync = { room: '', status: 'idle', error: '', timer: null };
 
@@ -243,10 +244,6 @@
     }
   }
 
-  function syncRoomLabel() {
-    return sync.room ? 'Комната: ' + esc(sync.room) : 'Комната не создана';
-  }
-
   function makeRoomCode() {
     var letters = 'abcdefghijkmnpqrstuvwxyz23456789';
     var out = '';
@@ -336,56 +333,293 @@
     return Number(answer) === Number(right);
   }
 
+  var TEX_SYMBOLS = {
+    lim: 'lim', limsup: 'lim sup', liminf: 'lim inf', sup: 'sup', inf: 'inf',
+    max: 'max', min: 'min', to: '→', mapsto: '↦', infty: '∞',
+    dots: '…', ldots: '…', cdots: '…',
+    varepsilon: 'ε', epsilon: 'ε', delta: 'δ', varphi: 'φ', phi: 'φ',
+    cdot: '·', div: '÷', pm: '±', mp: '∓', times: '×',
+    le: '≤', leq: '≤', ge: '≥', geq: '≥', ne: '≠', neq: '≠',
+    equiv: '≡', approx: '≈', propto: '∝', sim: '~',
+    in: '∈', notin: '∉', ni: '∋', subseteq: '⊆', subset: '⊂',
+    supseteq: '⊇', supset: '⊃', cup: '∪', cap: '∩',
+    setminus: '∖', varnothing: '∅', emptyset: '∅',
+    forall: '∀', exists: '∃', nexists: '∄',
+    Rightarrow: '⇒', Leftarrow: '⇐', Leftrightarrow: '⇔', leftrightarrow: '↔',
+    iff: '⇔', implies: '⇒', neg: '¬', lnot: '¬',
+    land: '∧', lor: '∨', wedge: '∧', vee: '∨',
+    oplus: '⊕', otimes: '⊗', odot: '⊙', bigoplus: '⊕',
+    bigvee: '⋁', bigwedge: '⋀', uparrow: '↑', downarrow: '↓',
+    vdash: '⊢', models: '⊨', preceq: '≼', leadsto: '⇝', top: '⊤', bot: '⊥', sigma: 'σ',
+    mid: '|', nmid: '∤', parallel: '∥', perp: '⊥', circ: '∘',
+    triangle: '△', angle: '∠', degree: '°',
+    det: 'det', tg: 'tg', ctg: 'ctg',
+    Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Pi: 'Π',
+    Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω', alpha: 'α', beta: 'β',
+    gamma: 'γ', delta: 'δ', zeta: 'ζ', eta: 'η', theta: 'θ', iota: 'ι',
+    kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', rho: 'ρ', tau: 'τ',
+    chi: 'χ', psi: 'ψ', omega: 'ω', varalpha: 'α',
+    sum: 'Σ', prod: '∏', int: '∫', partial: '∂', prime: '′',
+    pi: 'π', ell: 'ℓ', arg: 'arg',
+    log: 'log', ln: 'ln', sin: 'sin', cos: 'cos', tan: 'tan', cot: 'cot',
+    sec: 'sec', csc: 'csc', arcsin: 'arcsin', arccos: 'arccos', arctan: 'arctan',
+    sinh: 'sinh', cosh: 'cosh', tanh: 'tanh'
+  };
+
+  var TEX_NEGATIONS = {
+    '=': '≠', '\\in': '∉', '\\equiv': '≢', '\\subset': '⊄', '\\mid': '∤', '\\ni': '∋'
+  };
+
+  function texIsLetter(ch) {
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+  }
+
+  function texSkipSpaces(s, i) {
+    while (i < s.length && /\s/.test(s.charAt(i))) i++;
+    return i;
+  }
+
+  function texReadGroup(s, i) {
+    i = texSkipSpaces(s, i);
+    if (s.charAt(i) !== '{') {
+      var token = texReadToken(s, i);
+      return { value: token.value, next: token.next };
+    }
+    var depth = 1;
+    var start = i + 1;
+    i++;
+    while (i < s.length && depth > 0) {
+      var ch = s.charAt(i);
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      i++;
+    }
+    return { value: s.slice(start, i - 1), next: i };
+  }
+
+  function texReadToken(s, i) {
+    i = texSkipSpaces(s, i);
+    if (i >= s.length) return { value: '', next: i };
+    if (s.charAt(i) === '\\') {
+      var j = i + 1;
+      while (j < s.length && texIsLetter(s.charAt(j))) j++;
+      if (j === i + 1) j = Math.min(i + 2, s.length);
+      return { value: s.slice(i, j), next: j };
+    }
+    return { value: s.charAt(i), next: i + 1 };
+  }
+
+  function texCommandName(s, i) {
+    var j = i;
+    while (j < s.length && texIsLetter(s.charAt(j))) j++;
+    return { name: s.slice(i, j), next: j };
+  }
+
+  function texHtml(s) {
+    var out = '';
+    var i = 0;
+    var BS = String.fromCharCode(92);
+
+    while (i < s.length) {
+      var ch = s.charAt(i);
+
+      if (ch === BS) {
+        if (s.charAt(i + 1) === BS) {
+          out += '<br>';
+          i += 2;
+          continue;
+        }
+        var cmd = texCommandName(s, i + 1);
+        var name = cmd.name;
+        i = cmd.next;
+
+        if (name === 'frac' || name === 'dfrac' || name === 'tfrac') {
+          var num = texReadGroup(s, i);
+          var den = texReadGroup(s, num.next);
+          i = den.next;
+          out += '<span class="frac"><span class="frac-top">' + texHtml(num.value) +
+            '</span><span class="frac-bottom">' + texHtml(den.value) + '</span></span>';
+          continue;
+        }
+        if (name === 'sqrt') {
+          i = texSkipSpaces(s, i);
+          var degree = '';
+          if (s.charAt(i) === '[') {
+            var close = s.indexOf(']', i + 1);
+            if (close > i) {
+              degree = texHtml(s.slice(i + 1, close));
+              i = close + 1;
+            }
+          }
+          var rad = texReadGroup(s, i);
+          i = rad.next;
+          out += degree
+            ? '<span class="root"><sup>' + degree + '</sup>√(' + texHtml(rad.value) + ')</span>'
+            : '√(' + texHtml(rad.value) + ')';
+          continue;
+        }
+        if (name === 'overline' || name === 'bar') {
+          var over = texReadGroup(s, i);
+          i = over.next;
+          out += '<span class="overline">' + texHtml(over.value) + '</span>';
+          continue;
+        }
+        if (name === 'vec') {
+          var vec = texReadGroup(s, i);
+          i = vec.next;
+          out += ' ' + texHtml(vec.value) + '⃗ ';
+          continue;
+        }
+        if (name === 'binom') {
+          var top = texReadGroup(s, i);
+          var bottom = texReadGroup(s, top.next);
+          i = bottom.next;
+          out += '<span class="binom"><span class="binom-delim">(</span><span class="binom-col">' +
+            '<span>' + texHtml(top.value) + '</span><span>' + texHtml(bottom.value) + '</span>' +
+            '</span><span class="binom-delim">)</span></span>';
+          continue;
+        }
+        if (name === 'text' || name === 'operatorname' || name === 'mathrm' ||
+            name === 'mathbf' || name === 'mathit' || name === 'mathcal' || name === 'mathsf' ||
+            name === 'mathtt') {
+          var txt = texReadGroup(s, i);
+          i = txt.next;
+          out += texHtml(txt.value);
+          continue;
+        }
+        if (name === 'mathbb') {
+          var bb = texReadGroup(s, i);
+          i = bb.next;
+          var bbMap = { R: 'ℝ', C: 'ℂ', N: 'ℕ', Q: 'ℚ', Z: 'ℤ' };
+          out += bbMap[bb.value] || texHtml(bb.value);
+          continue;
+        }
+        if (name === 'pmod') {
+          var mod = texReadGroup(s, i);
+          i = mod.next;
+          out += ' <span class="pmod">(mod ' + texHtml(mod.value) + ')</span>';
+          continue;
+        }
+        if (name === 'bmod') {
+          out += ' <span class="pmod">mod</span> ';
+          continue;
+        }
+        if (name === 'not') {
+          i = texSkipSpaces(s, i);
+          var negToken = texReadToken(s, i);
+          i = negToken.next;
+          out += TEX_NEGATIONS[negToken.value] ||
+            (negToken.value.charAt(0) === BS ? TEX_SYMBOLS[negToken.value.slice(1)] || '' : '') || '¬';
+          continue;
+        }
+        if (name === 'left' || name === 'right' || name === 'limits' || name === '!' ||
+            name === ',' || name === ';' || name === ':' || name === ' ') {
+          out += (name === ':' || name === ' ' || name === ';' || name === ',') ? ' ' : '';
+          continue;
+        }
+        if (name === 'quad' || name === 'qquad') {
+          out += ' ';
+          continue;
+        }
+        if (name === 'circ') {
+          out += '∘';
+          continue;
+        }
+        if (name === 'begin' || name === 'end') {
+          var grp = texReadGroup(s, i);
+          i = grp.next;
+          out += grp.value;
+          continue;
+        }
+        if (name === 'lfloor') { out += '⌊'; continue; }
+        if (name === 'rfloor') { out += '⌋'; continue; }
+        if (name === 'lceil') { out += '⌈'; continue; }
+        if (name === 'rceil') { out += '⌉'; continue; }
+        if (name === 'stackrel') {
+          var stTop = texReadGroup(s, i);
+          var stBottom = texReadGroup(s, stTop.next);
+          i = stBottom.next;
+          out += '<span class="stackrel"><span class="stackrel-top">' + texHtml(stTop.value) +
+            '</span><span class="stackrel-bottom">' + texHtml(stBottom.value) + '</span></span>';
+          continue;
+        }
+        if (Object.prototype.hasOwnProperty.call(TEX_SYMBOLS, name)) {
+          out += TEX_SYMBOLS[name];
+          continue;
+        }
+        out += esc(name);
+        continue;
+      }
+
+      if (ch === '{') {
+        var brace = texReadGroup(s, i);
+        out += texHtml(brace.value);
+        i = brace.next;
+        continue;
+      }
+      if (ch === '}') {
+        i++;
+        continue;
+      }
+      if (ch === '_' || ch === '^') {
+        var script = texReadGroup(s, i + 1);
+        i = script.next;
+        var inner = texHtml(script.value);
+        if (ch === '^' && (script.value === '\\circ' || inner === '∘')) {
+          out += '°';
+        } else {
+          out += (ch === '_' ? '<sub>' : '<sup>') + inner + (ch === '_' ? '</sub>' : '</sup>');
+        }
+        continue;
+      }
+      if (ch === '~') {
+        out += ' ';
+        i++;
+        continue;
+      }
+      if (ch === '&') {
+        out += ' ';
+        i++;
+        continue;
+      }
+      out += esc(ch);
+      i++;
+    }
+    return out;
+  }
+
   function mathHtml(tex) {
-    var s = esc(tex);
-
-    s = s.replace(/\\dfrac|\\tfrac/g, '\\frac');
-    s = s.replace(/\\mathbb\{([RCNQZ])\}/g, function (match, letter) {
-      return { R: 'ℝ', C: 'ℂ', N: 'ℕ', Q: 'ℚ', Z: 'ℤ' }[letter] || letter;
+    var raw = String(tex == null ? '' : tex);
+    var envs = [];
+    raw = raw.replace(/\\begin\{(pmatrix|bmatrix|vmatrix|matrix|cases)\}([\s\S]*?)\\end\{\1\}/g, function (m, env, body) {
+      envs.push({ env: env, body: body });
+      return '@@MATHENV' + (envs.length - 1) + '@@';
     });
-    s = s.replace(/\\operatorname\{Re\}/g, 'Re');
-    s = s.replace(/\\operatorname\{Im\}/g, 'Im');
-    s = s.replace(/\\overline\{([^{}]*)\}/g, '<span class="overline">$1</span>');
-    s = s.replace(/\\bar\{([^{}]*)\}/g, '<span class="overline">$1</span>');
-    s = s.replace(/\\bar\s*([a-zA-Z])/g, '<span class="overline">$1</span>');
-    s = s.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g,
-      '<span class="frac"><span class="frac-top">$1</span><span class="frac-bottom">$2</span></span>');
-    s = s.replace(/\\frac([0-9a-zA-Z])([0-9a-zA-Z])/g,
-      '<span class="frac"><span class="frac-top">$1</span><span class="frac-bottom">$2</span></span>');
-    s = s.replace(/\\sqrt\[([^\]]+)\]\{([^{}]*)\}/g,
-      '<span class="root"><sup>$1</sup>√($2)</span>');
-    s = s.replace(/\\sqrt\{([^{}]*)\}/g, '√($1)');
-    s = s.replace(/\\text\{([^{}]*)\}/g, '$1');
-    s = s.replace(/_\{([^{}]*)\}/g, '<sub>$1</sub>');
-    s = s.replace(/\^\{([^{}]*)\}/g, '<sup>$1</sup>');
-    s = s.replace(/_([a-zA-Z0-9])/g, '<sub>$1</sub>');
-    s = s.replace(/\^([a-zA-Z0-9])/g, '<sup>$1</sup>');
 
-    var map = {
-      '\\lim': 'lim', '\\limsup': 'lim sup', '\\liminf': 'lim inf',
-      '\\sup': 'sup', '\\inf': 'inf', '\\max': 'max', '\\min': 'min',
-      '\\to': '→', '\\mapsto': '↦', '\\infty': '∞', '\\dots': '…',
-      '\\varepsilon': 'ε', '\\epsilon': 'ε', '\\delta': 'δ',
-      '\\varphi': 'φ', '\\cdot': '·', '\\div': '÷', '\\pm': '±', '\\mp': '∓',
-      '\\le': '≤', '\\ge': '≥', '\\neq': '≠', '\\equiv': '≡', '\\approx': '≈',
-      '\\times': '×', '\\propto': '∝', '\\sim': '~',
-      '\\in': '∈', '\\notin': '∉', '\\subseteq': '⊆', '\\subset': '⊂',
-      '\\supseteq': '⊇', '\\supset': '⊃', '\\cup': '∪', '\\cap': '∩',
-      '\\setminus': '∖', '\\varnothing': '∅', '\\emptyset': '∅',
-      '\\forall': '∀', '\\exists': '∃', '\\Rightarrow': '⇒',
-      '\\Leftrightarrow': '⇔', '\\iff': '⇔', '\\implies': '⇒',
-      '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\Delta': 'Δ',
-      '\\sum': 'Σ', '\\int': '∫', '\\partial': '∂', '\\prime': '′',
-      '\\pi': 'π', '\\theta': 'θ', '\\lambda': 'λ', '\\mu': 'μ',
-      '\\sigma': 'σ', '\\ell': 'ℓ', '\\arg': 'arg',
-      '\\log': 'log', '\\ln': 'ln', '\\sin': 'sin', '\\cos': 'cos',
-      '\\tan': 'tan', '\\left': '', '\\right': '', '\\quad': ' ', '\\,': ' '
-    };
-    s = s.replace(/\\[a-zA-Z]+/g, function (m) {
-      return Object.prototype.hasOwnProperty.call(map, m) ? map[m] : m.slice(1);
+    var html = texHtml(raw);
+    html = html.replace(/@@MATHENV(\d+)@@/g, function (m, index) {
+      var item = envs[Number(index)];
+      if (!item) return '';
+      var rows = item.body.split(String.fromCharCode(92) + String.fromCharCode(92)).map(function (row) {
+        return row.trim();
+      }).filter(function (row) { return row !== ''; });
+      var bodyRows = rows.map(function (row) {
+        var cells = row.split('&');
+        return '<tr>' + cells.map(function (cell) {
+          return '<td>' + mathHtml(cell.trim()) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      var delims = {
+        pmatrix: ['(', ')'], bmatrix: ['[', ']'], vmatrix: ['|', '|'],
+        matrix: ['', ''], cases: ['{', '']
+      };
+      var pair = delims[item.env] || ['', ''];
+      return '<span class="math-matrix ' + item.env + '">' +
+        '<span class="matrix-delim">' + pair[0] + '</span>' +
+        '<table class="matrix-table"><tbody>' + bodyRows + '</tbody></table>' +
+        '<span class="matrix-delim">' + pair[1] + '</span></span>';
     });
-    s = s.replace(/\\/g, '');
-    return s;
+    return html;
   }
 
   function md(text) {
@@ -430,6 +664,7 @@
       target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
       layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/>',
       check: '<path d="m5 12 4 4L19 6"/>',
+      lock: '<rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
       plus: '<path d="M12 5v14M5 12h14"/>',
       download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>',
       upload: '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 21h14"/>',
@@ -444,13 +679,81 @@
     return '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (paths[name] || '') + '</svg>';
   }
 
+  var SUBJECT_TONES = null;
+
+  function subjectTone(subject) {
+    if (!SUBJECT_TONES) {
+      SUBJECT_TONES = {};
+      SUBJECT_TONES['Математический анализ'] = 0;
+      SUBJECT_TONES['Аналитическая геометрия'] = 1;
+      SUBJECT_TONES['Дискретная математика'] = 2;
+      SUBJECT_TONES['Линейная алгебра'] = 3;
+      SUBJECT_TONES['Теория вероятностей'] = 4;
+      SUBJECT_TONES['Алгоритмы и структуры данных'] = 5;
+      SUBJECT_TONES['Программирование'] = 6;
+    }
+    var label = String(subject == null ? '' : subject);
+    return typeof SUBJECT_TONES[label] === 'number' ? SUBJECT_TONES[label] : -1;
+  }
+
   function toneFor(value) {
     var text = String(value || '');
+    var known = subjectTone(text);
+    if (known >= 0) return known;
     var hash = 0;
     for (var i = 0; i < text.length; i++) {
       hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
     }
     return hash % 5;
+  }
+
+  function subjectList() {
+    var list = [];
+    state.lessons.forEach(function (l) {
+      var subject = l.subject || 'Без предмета';
+      if (list.indexOf(subject) < 0) list.push(subject);
+    });
+    return list.sort(function (a, b) {
+      return toneFor(a) - toneFor(b) || a.localeCompare(b);
+    });
+  }
+
+  function subjectStats(subject) {
+    var list = state.lessons.filter(function (l) {
+      return (l.subject || 'Без предмета') === subject;
+    });
+    var done = list.filter(function (l) {
+      return state.progress[l.id] && state.progress[l.id].done;
+    }).length;
+    return {
+      total: list.length,
+      done: done,
+      percent: list.length ? Math.round(done / list.length * 100) : 0
+    };
+  }
+
+  function lessonsOf(subject) {
+    return state.lessons.filter(function (l) {
+      return (l.subject || 'Без предмета') === subject;
+    }).sort(function (a, b) {
+      return (Number(a.order) || 0) - (Number(b.order) || 0) ||
+        String(a.title || '').localeCompare(String(b.title || ''));
+    });
+  }
+
+  function subjectTabsHtml(active, action) {
+    var subjects = subjectList();
+    if (!subjects.length) return '';
+    return '<div class="subject-tabs">' + subjects.map(function (subject) {
+      var stats = subjectStats(subject);
+      return '<button type="button" class="subject-tab tone-' + toneFor(subject) +
+        (subject === active ? ' active' : '') + '" data-action="' + action +
+        '" data-subject="' + esc(subject) + '">' +
+        '<span class="tab-dot"></span>' +
+        '<span class="tab-name">' + esc(subject) + '</span>' +
+        '<span class="tab-count">' + stats.done + '/' + stats.total + '</span>' +
+        '</button>';
+    }).join('') + '</div>';
   }
 
   function initialOf(value) {
@@ -478,9 +781,14 @@
     }).join('');
 
     return '<aside class="rail">' +
+      '<div class="rail-brand">' +
       '<button type="button" class="brand-mark" data-action="nav" data-screen="today" title="Сегодня">' +
       icon('spark') + '</button>' +
+      '<div class="brand-copy"><strong>studia.</strong><span>учебный дневник</span></div>' +
+      '</div>' +
+      '<div class="rail-label">Меню</div>' +
       '<nav class="rail-nav">' + nav + '</nav>' +
+      '<div class="rail-tip"><strong>Один урок — уже прогресс</strong><span>без спешки и давления</span></div>' +
       '</aside>';
   }
 
@@ -494,7 +802,7 @@
         '<button type="button" class="icon-btn' + (favorite ? ' active' : '') +
         '" data-action="fav" title="' + (favorite ? 'Убрать из избранного' : 'В избранное') + '">' +
         icon('star') + '</button>' +
-        '<button type="button" class="btn ghost sm" data-action="close">Выйти</button>' +
+        '<button type="button" class="btn ghost sm" data-action="close">' + icon('arrow') + 'К урокам</button>' +
         '</div></header>';
     }
 
@@ -513,6 +821,8 @@
       '<button type="button" class="icon-btn" data-action="theme" title="' +
       (state.settings.theme === 'dark' ? 'Светлая тема' : 'Тёмная тема') + '">' +
       icon(state.settings.theme === 'dark' ? 'sun' : 'moon') + '</button>' +
+      '<span class="user-chip"><span class="user-avatar">С</span>' +
+      '<span class="user-meta"><strong>Студент</strong><small>1 курс</small></span></span>' +
       '</div></header>';
   }
 
@@ -549,42 +859,6 @@
       '</div></div>';
   }
 
-  function heroArt() {
-    return '<svg class="hero-svg" viewBox="0 0 340 260" fill="none" aria-hidden="true">' +
-      '<defs>' +
-      '<radialGradient id="heroOrb" cx="35%" cy="28%" r="78%">' +
-      '<stop offset="0" stop-color="#ffffff"/>' +
-      '<stop offset=".32" stop-color="#d9dcff"/>' +
-      '<stop offset=".72" stop-color="#9a9cf9"/>' +
-      '<stop offset="1" stop-color="#6366f1"/>' +
-      '</radialGradient>' +
-      '<linearGradient id="heroRing" x1="70" y1="70" x2="310" y2="210" gradientUnits="userSpaceOnUse">' +
-      '<stop stop-color="#ffffff" stop-opacity=".95"/>' +
-      '<stop offset="1" stop-color="#818cf8" stop-opacity=".15"/>' +
-      '</linearGradient>' +
-      '<filter id="heroGlow" x="-60%" y="-60%" width="220%" height="220%">' +
-      '<feGaussianBlur stdDeviation="24"/>' +
-      '</filter>' +
-      '</defs>' +
-      '<ellipse cx="196" cy="132" rx="124" ry="100" fill="#818cf8" opacity=".18" filter="url(#heroGlow)"/>' +
-      '<ellipse cx="192" cy="148" rx="122" ry="38" transform="rotate(-16 192 148)" stroke="url(#heroRing)" stroke-width="2"/>' +
-      '<circle class="float-slow" cx="192" cy="122" r="78" fill="url(#heroOrb)"/>' +
-      '<circle cx="166" cy="96" r="27" fill="#ffffff" opacity=".2"/>' +
-      '<path class="float-fast" d="M282 60l4 12 12 4-12 4-4 12-4-12-12-4 12-4 4-12Z" fill="#ffffff" opacity=".92"/>' +
-      '<path d="M78 72l3 9 9 3-9 3-3 9-3-9-9-3 9-3 3-9Z" fill="#a5b4fc"/>' +
-      '<path d="M252 196l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6Z" fill="#ffffff" opacity=".85"/>' +
-      '<g class="float-slow">' +
-      '<rect x="146" y="154" width="100" height="60" rx="15" fill="#ffffff" opacity=".94"/>' +
-      '<rect x="159" y="169" width="34" height="5" rx="2.5" fill="#c7d2fe"/>' +
-      '<rect x="159" y="181" width="57" height="5" rx="2.5" fill="#e0e7ff"/>' +
-      '<rect x="159" y="193" width="44" height="5" rx="2.5" fill="#e0e7ff"/>' +
-      '<circle cx="225" cy="183" r="12" fill="#6366f1"/>' +
-      '<path d="m219 183 4 4 8-8" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '</g>' +
-      '<path d="M112 176c14-10 34-10 48 0" stroke="#c7d2fe" stroke-width="2" stroke-linecap="round"/>' +
-      '</svg>';
-  }
-
   function tasksPill(count) {
     return '<span class="pill">' + icon('target') + count + ' ' +
       plural(count, 'задача', 'задачи', 'задач') + '</span>';
@@ -595,6 +869,50 @@
     if (isReview) return { label: 'Повторение', cta: 'Повторить', cls: 'review' };
     if (p && !p.done) return { label: 'Продолжить', cta: 'Продолжить', cls: 'progress' };
     return { label: 'Новый урок', cta: 'Начать урок', cls: 'new' };
+  }
+
+  function boardCardHtml(l, isReview) {
+    if (!l) return '';
+    var reason = taskReason(l, isReview);
+    var p = state.progress[l.id];
+    var meta = [];
+    if (l.topic) meta.push(l.topic);
+    if (l.est_minutes) meta.push(l.est_minutes + ' мин');
+    return '<button type="button" class="board-card" data-action="open" data-id="' + esc(l.id) +
+      '" data-review="' + (isReview ? '1' : '0') + '">' +
+      '<span class="board-card-top">' +
+      '<span class="badge ' + reason.cls + '">' + reason.label + '</span>' +
+      (p && p.mistakes ? '<span class="board-mistakes">ошибок ' + p.mistakes + '</span>' : '') +
+      '</span>' +
+      '<span class="board-card-title">' + esc(l.title || 'Без названия') + '</span>' +
+      '<span class="board-card-meta">' + esc(meta.join(' · ')) + '</span>' +
+      '<span class="board-card-cta">' + reason.cta + '<span class="lesson-arrow">' + icon('chev') + '</span></span>' +
+      '</button>';
+  }
+
+  function boardColumnHtml(subject, items, due) {
+    var stats = subjectStats(subject);
+    var reviews = items.filter(function (l) { return due.indexOf(l) >= 0; });
+    var cards = items.slice(0, 4).map(function (l) {
+      return boardCardHtml(l, due.indexOf(l) >= 0);
+    }).join('');
+
+    return '<section class="board-col tone-' + toneFor(subject) + '">' +
+      '<header class="board-col-head">' +
+      '<span class="board-col-dot"></span>' +
+      '<h2>' + esc(subject) + '</h2>' +
+      (reviews.length ? '<span class="board-col-badge">' + reviews.length + ' повтор.</span>' : '') +
+      '</header>' +
+      '<div class="board-col-progress">' +
+      '<span class="board-col-line"><span style="width:' + stats.percent + '%"></span></span>' +
+      '<span class="board-col-pct">' + stats.done + '/' + stats.total + '</span>' +
+      '</div>' +
+      '<div class="board-col-list">' +
+      (cards || '<p class="board-col-empty">Пока всё сделано по этому предмету.</p>') +
+      '</div>' +
+      '<button type="button" class="board-col-link" data-action="open-subject" data-subject="' +
+      esc(subject) + '">Все уроки' + icon('chev') + '</button>' +
+      '</section>';
   }
 
   function todayHtml() {
@@ -618,11 +936,32 @@
     Object.keys(groups).forEach(function (subject) {
       var limit = Number(state.settings.newPerSubject[subject]);
       if (!Number.isFinite(limit)) limit = 1;
+      limit = Math.max(0, limit);
+      if (!limit) return;
+
+      var doneTopics = {};
+      state.lessons.forEach(function (l) {
+        if ((l.subject || 'Без предмета') !== subject) return;
+        var p = state.progress[l.id];
+        if (p && p.firstDone === today) {
+          doneTopics[l.topic || l.title || l.id] = true;
+        }
+      });
+      var left = Math.max(0, limit - Object.keys(doneTopics).length);
+      left = Math.min(1, left);
+      if (!left) return;
+
+      var seenTopics = {};
       groups[subject].slice().sort(function (a, b) {
         return (Number(a.order) || 0) - (Number(b.order) || 0) ||
           String(a.title || '').localeCompare(String(b.title || ''));
-      }).slice(0, Math.max(0, limit)).forEach(function (l) {
+      }).forEach(function (l) {
+        if (left <= 0) return;
+        var topic = l.topic || l.title || l.id;
+        if (seenTopics[topic]) return;
+        seenTopics[topic] = true;
         fresh.push(l);
+        left--;
       });
     });
 
@@ -645,10 +984,24 @@
       : hour < 18 ? 'Добрый день'
       : 'Добрый вечер';
 
-    var first = shown[0] || null;
-    var rest = shown.slice(1);
     var subtitle;
     var content;
+
+    var bySubject = {};
+    shown.forEach(function (l) {
+      var subject = l.subject || 'Без предмета';
+      (bySubject[subject] = bySubject[subject] || []).push(l);
+    });
+
+    var columns = subjectList().map(function (subject) {
+      var items = (bySubject[subject] || []).slice().sort(function (a, b) {
+        var ra = due.indexOf(a) >= 0 ? 0 : 1;
+        var rb = due.indexOf(b) >= 0 ? 0 : 1;
+        return ra - rb || (Number(a.order) || 0) - (Number(b.order) || 0);
+      });
+      return '<div class="board-col-wrap"' + (items.length ? '' : ' data-empty="1"') + '>' +
+        boardColumnHtml(subject, items, due) + '</div>';
+    }).join('');
 
     if (!state.lessons.length) {
       subtitle = 'В папке lessons пока нет уроков.';
@@ -656,59 +1009,11 @@
         'Уроки лежат в папке <code class="inline-code">lessons</code>. Создайте файл урока и подключите его в <code class="inline-code">index.html</code> — или просто попросите меня.',
         '<button type="button" class="btn primary" data-action="nav" data-screen="settings">' +
         icon('folder') + 'Как добавить</button>');
-    } else if (!first) {
-      var doneText = doneToday
-        ? 'Выполнено сегодня: ' + doneToday + ' ' + plural(doneToday, 'урок', 'урока', 'уроков') +
-          (todayMinutes ? ' · ' + todayMinutes + ' мин.' : '.')
-        : 'Новых уроков нет, повторений тоже. Можно перечитать теорию или добавить новую тему.';
-      subtitle = doneToday ? 'План на сегодня выполнен.' : 'На сегодня задач нет.';
-      content = '<section class="card done-card">' +
-        '<div class="done-icon">' + icon('check') + '</div>' +
-        '<div class="done-copy">' +
-        '<div class="eyebrow">План выполнен</div>' +
-        '<h2>На сегодня всё готово</h2>' +
-        '<p class="muted">' + doneText + '</p>' +
-        '</div>' +
-        '<div class="done-actions">' +
-        '<button type="button" class="btn primary" data-action="nav" data-screen="library">' +
-        icon('book') + 'Библиотека</button>' +
-        '<button type="button" class="btn soft" data-action="nav" data-screen="subjects">' +
-        icon('grid') + 'Предметы</button>' +
-        '</div></section>';
     } else {
-      subtitle = 'Осталось ' + shown.length + ' ' + plural(shown.length, 'задача', 'задачи', 'задач') +
-        ' · примерно ' + totalMinutes + ' мин. Начните с первого — остальное подождёт.';
-      var reason = taskReason(first, due.indexOf(first) >= 0);
-      var next = '<section class="next-card tone-' + toneFor(first.subject || first.title) + '">' +
-        '<div class="next-copy">' +
-        '<div class="next-kicker"><span class="eyebrow">Сейчас · 1 из ' + shown.length + '</span>' +
-        '<span class="badge ' + reason.cls + '">' + reason.label + '</span></div>' +
-        '<h2>' + esc(first.title || 'Без названия') + '</h2>' +
-        '<div class="next-meta">' +
-        '<span>' + esc(first.subject || 'Без предмета') + '</span>' +
-        (first.topic ? '<span class="dot">·</span><span>' + esc(first.topic) + '</span>' : '') +
-        (first.est_minutes ? '<span class="dot">·</span><span class="next-time">' +
-          icon('clock') + first.est_minutes + ' мин</span>' : '') +
-        '</div>' +
-        '<div class="next-actions">' +
-        '<button type="button" class="btn primary lg" data-action="open" data-id="' + esc(first.id) +
-        '" data-review="' + (due.indexOf(first) >= 0 ? '1' : '0') + '">' +
-        icon('play') + reason.cta + '</button>' +
-        '</div></div>' +
-        '<div class="next-art">' + heroArt() + '</div>' +
-        '</section>';
-
-      var plan;
-      if (rest.length) {
-        plan = '<section class="section plan-section">' +
-          '<div class="section-head"><h2>Дальше по плану</h2>' +
-          '<span class="count-pill">' + rest.length + '</span></div>' +
-          '<div class="lesson-list">' + rest.map(function (l, i) {
-            return lessonCardHtml(l, due.indexOf(l) >= 0, false, i + 2);
-          }).join('') + '</div></section>';
-      } else {
-        plan = '<p class="plan-tail">После этого урока на сегодня всё. Можно выдохнуть.</p>';
-      }
+      subtitle = shown.length
+        ? 'Сегодня ' + shown.length + ' ' + plural(shown.length, 'задача', 'задачи', 'задач') +
+          ' на ' + totalMinutes + ' мин. Выберите предмет в колонке и начинайте.'
+        : 'Готово по всем предметам. Можно перечитать теорию в библиотеке.';
 
       var footerParts = [];
       footerParts.push('выполнено ' + doneToday + ' ' + plural(doneToday, 'урок', 'урока', 'уроков'));
@@ -717,11 +1022,22 @@
         ? '<div class="day-footer">' + icon('check') + '<span>Сегодня: ' + footerParts.join(' · ') + '</span></div>'
         : '';
 
-      content = next + plan + footer;
+      content = '<div class="board">' + columns + '</div>' + footer;
     }
 
     return '<div class="today-page">' +
-      pageHead('План на сегодня', hello, subtitle, tasksPill(shown.length)) +
+      '<section class="today-hero">' +
+      '<div class="today-hero-copy">' +
+      '<div class="eyebrow">План на сегодня</div>' +
+      '<h1>' + hello + '</h1>' +
+      '<p>' + subtitle + '</p>' +
+      '</div>' +
+      '<div class="today-hero-stats">' +
+      '<div class="hero-stat"><strong>' + shown.length + '</strong><span>задач</span></div>' +
+      '<div class="hero-stat"><strong>' + totalMinutes + '</strong><span>минут</span></div>' +
+      '<div class="hero-stat"><strong>' + doneToday + '</strong><span>сделано</span></div>' +
+      '</div>' +
+      '</section>' +
       content + '</div>';
   }
 
@@ -775,43 +1091,76 @@
   }
 
   function subjectCardHtml(subject) {
-    var list = state.lessons.filter(function (l) {
-      return (l.subject || 'Без предмета') === subject;
-    }).sort(function (a, b) {
-      return (Number(a.order) || 0) - (Number(b.order) || 0) ||
-        String(a.title || '').localeCompare(String(b.title || ''));
-    });
-
-    var done = list.filter(function (l) {
-      return state.progress[l.id] && state.progress[l.id].done;
-    }).length;
-    var percent = list.length ? Math.round(done / list.length * 100) : 0;
+    var list = lessonsOf(subject);
+    var stats = subjectStats(subject);
     var tone = toneFor(subject);
+    var next = list.filter(function (l) {
+      return !(state.progress[l.id] && state.progress[l.id].done);
+    })[0];
 
-    return '<section class="card subject-card tone-' + tone + '">' +
+    return '<button type="button" class="card subject-card tone-' + tone +
+      '" data-action="open-subject" data-subject="' + esc(subject) + '">' +
       '<div class="subject-head">' +
       '<span class="subject-icon">' + esc(initialOf(subject)) + '</span>' +
       '<div class="grow"><h2>' + esc(subject) + '</h2>' +
-      '<span class="muted small">' + done + ' из ' + list.length + ' пройдено</span></div>' +
-      '<span class="subject-pct">' + percent + '%</span>' +
+      '<span class="muted small">' + stats.done + ' из ' + stats.total + ' пройдено</span></div>' +
+      '<span class="subject-pct">' + stats.percent + '%</span>' +
       '</div>' +
-      '<div class="progress"><span style="width:' + percent + '%"></span></div>' +
-      '<div class="lesson-list compact">' +
-      list.map(function (l) { return lessonCardHtml(l, false, true); }).join('') +
-      '</div></section>';
+      '<div class="progress"><span style="width:' + stats.percent + '%"></span></div>' +
+      (next
+        ? '<div class="subject-next"><span class="eyebrow">Дальше</span>' +
+          '<span class="subject-next-title">' + esc(next.title || '') + '</span></div>'
+        : '<div class="subject-next done">' + icon('check') + '<span>Все уроки пройдены</span></div>') +
+      '<span class="subject-cta">Открыть предмет' + icon('chev') + '</span>' +
+      '</button>';
+  }
+
+  function subjectDetailHtml(subject) {
+    var list = lessonsOf(subject);
+    var stats = subjectStats(subject);
+    var topics = [];
+    list.forEach(function (l) {
+      var topic = l.topic || 'Без темы';
+      if (topics.indexOf(topic) < 0) topics.push(topic);
+    });
+
+    var groupsHtml = topics.map(function (topic) {
+      var inTopic = list.filter(function (l) { return (l.topic || 'Без темы') === topic; });
+      var doneInTopic = inTopic.filter(function (l) {
+        return state.progress[l.id] && state.progress[l.id].done;
+      }).length;
+      return '<section class="topic-group">' +
+        '<div class="topic-head"><h3>' + esc(topic) + '</h3>' +
+        '<span class="topic-count">' + doneInTopic + '/' + inTopic.length + '</span></div>' +
+        '<div class="lesson-list">' + inTopic.map(function (l) {
+          var review = state.reviews[l.id];
+          var isReview = !!(review && review.due && review.due <= dayKey());
+          return lessonCardHtml(l, isReview, false);
+        }).join('') + '</div></section>';
+    }).join('');
+
+    return pageHead('Предмет', esc(subject),
+      stats.done + ' из ' + stats.total + ' уроков пройдено · ' + topics.length + ' ' +
+      plural(topics.length, 'тема', 'темы', 'тем'),
+      '<span class="subject-pct big tone-' + toneFor(subject) + '">' + stats.percent + '%</span>') +
+      '<div class="subject-detail tone-' + toneFor(subject) + '">' +
+      '<div class="progress"><span style="width:' + stats.percent + '%"></span></div>' +
+      groupsHtml +
+      '</div>';
   }
 
   function subjectsHtml() {
-    var subjects = [];
-    state.lessons.forEach(function (l) {
-      var subject = l.subject || 'Без предмета';
-      if (subjects.indexOf(subject) < 0) subjects.push(subject);
-    });
+    var subjects = subjectList();
 
     var subtitle = subjects.length
       ? subjects.length + ' ' + plural(subjects.length, 'предмет', 'предмета', 'предметов') +
         ' · ' + state.lessons.length + ' ' + plural(state.lessons.length, 'урок', 'урока', 'уроков')
       : 'Пока пусто — добавьте первый урок.';
+
+    if (subjectFilter && subjects.indexOf(subjectFilter) >= 0) {
+      return '<div class="tabs-wrap">' + subjectTabsHtml(subjectFilter, 'open-subject') + '</div>' +
+        subjectDetailHtml(subjectFilter);
+    }
 
     var content = subjects.length
       ? '<div class="subject-grid">' + subjects.map(subjectCardHtml).join('') + '</div>'
@@ -820,39 +1169,67 @@
         '<button type="button" class="btn primary" data-action="nav" data-screen="settings">' +
         icon('folder') + 'Настройки</button>');
 
-    return pageHead('Библиотека знаний', 'Предметы', subtitle) + content;
+    return pageHead('Библиотека знаний', 'Предметы', subtitle) +
+      (subjects.length ? subjectTabsHtml('', 'open-subject') : '') + content;
+  }
+
+  function theoryLessons() {
+    return state.lessons.filter(function (l) {
+      return state.progress[l.id] && state.progress[l.id].done;
+    });
   }
 
   function libraryHtml() {
+    var learned = theoryLessons();
+    var subjects = subjectList().filter(function (subject) {
+      return learned.some(function (l) { return (l.subject || 'Без предмета') === subject; });
+    });
+    var active = subjects.indexOf(subjectFilter) >= 0 ? subjectFilter : '';
+
     return pageHead('Все материалы', 'Библиотека',
-      'Теория всех уроков в одном месте. Поиск идёт по названию и содержимому.') +
+      learned.length
+        ? 'Теория пройденных уроков: ' + learned.length + ' из ' + state.lessons.length + '. Новые темы появятся здесь после того, как вы их пройдёте.'
+        : 'Здесь появится теория уроков, которые вы уже прошли.') +
       '<div class="library-toolbar card">' +
       '<label class="search-box">' + icon('search') +
       '<input data-action="library-search" value="' + esc(libraryQuery) +
-      '" placeholder="Поиск по урокам и теории" autocomplete="off"></label>' +
-      '<span class="muted small">' + state.lessons.length + ' ' +
-      plural(state.lessons.length, 'урок', 'урока', 'уроков') + '</span>' +
+      '" placeholder="Поиск по пройденной теории" autocomplete="off"></label>' +
+      '<span class="muted small">' + learned.length + ' ' +
+      plural(learned.length, 'конспект', 'конспекта', 'конспектов') + '</span>' +
       '</div>' +
-      '<div id="library-results" class="library-list">' + libraryResultsHtml() + '</div>';
+      (subjects.length ? subjectTabsHtml(active, 'library-subject') : '') +
+      '<div id="library-results" class="library-list">' + libraryResultsHtml(active) + '</div>';
   }
 
-  function libraryResultsHtml() {
+  function libraryResultsHtml(active) {
     var query = libraryQuery.trim().toLowerCase();
-    var list = state.lessons.filter(function (l) {
-      if (!query) return true;
-      return (String(l.title || '') + ' ' + flattenTheory(l)).toLowerCase().indexOf(query) >= 0;
-    });
+    var learned = theoryLessons();
 
     if (!state.lessons.length) {
       return emptyStateHtml('book', 'Библиотека пуста',
-        'Добавьте файлы уроков в папку lessons — вся теория появится здесь.',
+        'Добавьте файлы уроков в папку lessons — теория появится здесь после прохождения.',
         '<button type="button" class="btn primary" data-action="nav" data-screen="settings">' +
         icon('folder') + 'Настройки</button>');
     }
 
+    if (!learned.length) {
+      return emptyStateHtml('lock', 'Пока пусто',
+        'Библиотека собирает теорию пройденных уроков. Пройдите первый урок — и его конспект появится здесь.',
+        '<button type="button" class="btn primary" data-action="nav" data-screen="today">' +
+        icon('play') + 'К плану на сегодня</button>');
+    }
+
+    var list = learned.filter(function (l) {
+      if (active && (l.subject || 'Без предмета') !== active) return false;
+      if (!query) return true;
+      return (String(l.title || '') + ' ' + flattenTheory(l)).toLowerCase().indexOf(query) >= 0;
+    }).sort(function (a, b) {
+      return (Number(a.order) || 0) - (Number(b.order) || 0);
+    });
+
     if (!list.length) {
       return emptyStateHtml('search', 'Ничего не найдено',
-        'Попробуйте другой запрос или откройте всю библиотеку.', '');
+        'Попробуйте другой запрос или выберите другой предмет.', '');
     }
 
     return list.map(function (l) {
@@ -863,6 +1240,7 @@
           (card.blocks || []).map(blockHtml).join('') +
           '</div></section>';
       }).join('');
+      var p = state.progress[l.id] || {};
 
       return '<article class="card library-card tone-' + toneFor(l.subject || l.title) + '">' +
         '<header class="library-head">' +
@@ -872,13 +1250,16 @@
         (l.topic ? ' · ' + esc(l.topic) : '') + '</div>' +
         '<h2>' + esc(l.title || 'Без названия') + '</h2>' +
         '</div>' +
-        (l.est_minutes
-          ? '<span class="lesson-time">' + icon('clock') + l.est_minutes + ' мин</span>'
+        (p.lastDone
+          ? '<span class="lesson-time done-time">' + icon('check') + 'пройден</span>'
           : '') +
+        '<button type="button" class="btn ghost sm" data-action="open" data-id="' + esc(l.id) +
+        '" data-review="0">Открыть</button>' +
         '</header>' +
-        '<div class="library-body">' +
+        '<details class="library-body" open>' +
+        '<summary class="library-summary">Теория<span class="data-hint">свернуть</span></summary>' +
         (theory || '<p class="muted">Теория для этого урока не добавлена.</p>') +
-        '</div></article>';
+        '</details></article>';
     }).join('');
   }
 
@@ -927,7 +1308,7 @@
 
       '<section class="card settings-card wide">' +
       '<div class="card-head"><div><div class="eyebrow">План</div><h2>Новых уроков в день</h2></div></div>' +
-      '<p class="muted small">Сколько новых уроков показывать на экране «Сегодня» для каждого предмета.</p>' +
+      '<p class="muted small">Сколько новых тем показывать на экране «Сегодня» для каждого предмета. После выполнения этого числа новые темы на сегодня не добавляются.</p>' +
       perSubject +
       '</section>' +
 
@@ -993,6 +1374,12 @@
     if (type === 'code') {
       return '<div class="block code-block"><div class="label">' + icon('code') + 'Код</div>' +
         '<pre><code>' + esc(block.content) + '</code></pre></div>';
+    }
+    if (type === 'figure') {
+      return '<figure class="block figure-block">' +
+        '<div class="figure-canvas">' + (block.svg || '') + '</div>' +
+        (block.caption ? '<figcaption>' + md(block.caption) + '</figcaption>' : '') +
+        '</figure>';
     }
     if (type === 'table') {
       var headers = Array.isArray(block.headers) ? block.headers : [];
@@ -1375,6 +1762,7 @@
       seconds: lesson.seconds,
       mistakes: lesson.mistakes,
       lastDone: previous.lastDone || '',
+      firstDone: previous.firstDone || '',
       updatedAt: Date.now()
     };
     persist();
@@ -1511,6 +1899,9 @@
     var l = getLesson(openId);
     if (!l) return;
 
+    var previous = state.progress[openId] || {};
+    var wasDone = !!previous.done;
+
     lesson.done = true;
     lesson.finished = true;
     lesson.phase = 'summary';
@@ -1520,6 +1911,9 @@
     var today = dayKey();
     var minutes = Math.max(1, Math.round(lesson.seconds / 60));
     state.progress[openId].lastDone = today;
+    if (!reviewMode && !wasDone && !state.progress[openId].firstDone) {
+      state.progress[openId].firstDone = today;
+    }
     state.reviews[openId] = { due: dayKey(1), interval: 1 };
     state.dailyLog[today] = (Number(state.dailyLog[today]) || 0) + minutes;
     persist();
@@ -1580,8 +1974,18 @@
         lesson = null;
       }
       screen = target.getAttribute('data-screen') || 'today';
+      if (screen === 'subjects' || screen === 'library') subjectFilter = '';
       render();
       window.scrollTo(0, 0);
+    } else if (action === 'open-subject') {
+      subjectFilter = target.getAttribute('data-subject') || '';
+      screen = 'subjects';
+      render();
+      window.scrollTo(0, 0);
+    } else if (action === 'library-subject') {
+      var picked = target.getAttribute('data-subject') || '';
+      subjectFilter = subjectFilter === picked ? '' : picked;
+      render();
     } else if (action === 'open') {
       openLesson(target.getAttribute('data-id'), target.getAttribute('data-review') === '1');
     } else if (action === 'close') {
@@ -1642,8 +2046,10 @@
 
     if (action === 'library-search') {
       libraryQuery = target.value;
+      var learned = theoryLessons();
+      var active = subjectList().indexOf(subjectFilter) >= 0 ? subjectFilter : '';
       var box = document.getElementById('library-results');
-      if (box) box.innerHTML = libraryResultsHtml();
+      if (box) box.innerHTML = libraryResultsHtml(active);
     } else if (action === 'answer') {
       if (lesson) lesson.value = target.value;
     } else if (action === 'new-per-subject') {
@@ -1765,6 +2171,7 @@
         seconds: Math.max(Number(newer.seconds) || 0, Number(older.seconds) || 0),
         mistakes: Math.max(Number(newer.mistakes) || 0, Number(older.mistakes) || 0),
         lastDone: newer.lastDone || older.lastDone || '',
+        firstDone: newer.firstDone || older.firstDone || '',
         updatedAt: Math.max(Number(newer.updatedAt) || 0, Number(older.updatedAt) || 0)
       };
     });

@@ -104,16 +104,26 @@ window.registerLesson({
       "explanation": "$\\frac{\\tan 2x}{2x} \\to 1$, $\\frac{3x}{\\sin 3x} \\to 1$, остаётся $\\frac{2}{3} \\approx 0{,}67$."
     },
     {
-      "type": "numeric",
+      "type": "input",
       "question": "Найдите $\\lim\\limits_{x \\to \\infty} \\left(1 + \\dfrac{3}{x}\\right)^x$. Ответ запишите как e^N или числом.",
-      "answer": "e^3",
+      "answer": [
+        "e^3",
+        "e³",
+        "e^{3}",
+        "e3"
+      ],
       "hint": "Замена $t = x/3$.",
       "explanation": "$\\left(1 + \\frac{3}{x}\\right)^x = \\left[\\left(1 + \\frac{1}{x/3}\\right)^{x/3}\\right]^3 \\to e^3$."
     },
     {
-      "type": "numeric",
+      "type": "input",
       "question": "Найдите $\\lim\\limits_{x \\to 0} (1 + 2x)^{1/x}$. Ответ запишите как e^N.",
-      "answer": "e^2",
+      "answer": [
+        "e^2",
+        "e²",
+        "e^{2}",
+        "e2"
+      ],
       "hint": "Замена $t = 2x$.",
       "explanation": "$(1 + 2x)^{1/x} = [(1 + 2x)^{1/(2x)}]^2 \\to e^2$."
     },
