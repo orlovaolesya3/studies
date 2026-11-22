@@ -1264,6 +1264,7 @@
   }
 
   function settingsHtml() {
+    var installed = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
     var subjects = [];
     state.lessons.forEach(function (l) {
       var subject = l.subject || 'Без предмета';
@@ -1310,6 +1311,20 @@
       '<div class="card-head"><div><div class="eyebrow">План</div><h2>Новых уроков в день</h2></div></div>' +
       '<p class="muted small">Сколько новых тем показывать на экране «Сегодня» для каждого предмета. После выполнения этого числа новые темы на сегодня не добавляются.</p>' +
       perSubject +
+      '</section>' +
+
+      '<section class="card settings-card wide install-card">' +
+      '<div class="card-head"><div><div class="eyebrow">Приложение</div>' +
+      '<h2>На телефон</h2></div><span class="count-pill">PWA</span></div>' +
+      '<p class="muted small">Добавьте studia на главный экран — приложение откроется без адресной строки ' +
+      'и будет работать офлайн. Прогресс сохранится в браузере.</p>' +
+      '<div class="install-row">' +
+      (installed
+        ? '<span class="install-done">' + icon('check') + 'Уже открыто как приложение</span>'
+        : '<button type="button" class="btn primary" data-action="install-app">' +
+          icon('download') + 'Установить приложение</button>') +
+      '<span class="muted small">iPhone: «Поделиться» → «На экран Домой»</span>' +
+      '</div>' +
       '</section>' +
 
       '<section class="card settings-card wide" id="sync-card">' +
@@ -2011,6 +2026,18 @@
       state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
       persist();
       render();
+    } else if (action === 'install-app') {
+      if (window.__pwaInstallPrompt) {
+        window.__pwaInstallPrompt.prompt();
+        window.__pwaInstallPrompt.userChoice.then(function () {
+          window.__pwaInstallPrompt = null;
+          render();
+        });
+      } else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+        alert('На iPhone: нажмите «Поделиться» в Safari и выберите «На экран Домой».');
+      } else {
+        alert('Откройте меню браузера и выберите «Установить приложение» или «Добавить на главный экран».');
+      }
     } else if (action === 'sync-save-room') {
       var field = document.getElementById('sync-room-input');
       sync.room = field ? field.value.trim().toLowerCase() : '';

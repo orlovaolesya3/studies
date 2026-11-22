@@ -5894,3 +5894,34 @@ html.dark .pill {
     justify-content: center;
   }
 }
+
+.install-row {
+  display: flex;
+  align-items: center;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.install-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--success-bg);
+  color: var(--success);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.install-done .icon {
+  width: 16px;
+  height: 16px;
+}
+
+@media (display-mode: standalone) {
+  .rail {
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
