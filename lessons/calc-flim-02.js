@@ -23,6 +23,10 @@ window.registerLesson({
       "title": "Определение",
       "blocks": [
         {
+          "type": "text",
+          "content": "Односторонний предел описывает поведение функции только слева или только справа от точки. Он нужен, когда слева и справа функция ведёт себя по-разному: например, у $1/x$ или у функций с модулем."
+        },
+        {
           "type": "formula",
           "content": "\\lim_{x \\to x_0 - 0} f(x) = A \\iff \\forall \\varepsilon > 0\\ \\exists \\delta:\\ x_0 - \\delta < x < x_0 \\Rightarrow |f(x) - A| < \\varepsilon"
         },

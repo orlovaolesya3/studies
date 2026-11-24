@@ -23,6 +23,10 @@ window.registerLesson({
       "title": "Через точку и нормаль",
       "blocks": [
         {
+          "type": "text",
+          "content": "Плоскость задаётся точкой $M_0(x_0,y_0,z_0)$ и ненулевой нормалью $\u000bec n=(A,B,C)$, перпендикулярной плоскости. Для любой точки $M(x,y,z)$ вектор $overrightarrow{M_0M}$ лежит в плоскости, поэтому $\u000bec ncdotoverrightarrow{M_0M}=0$ — отсюда и получается общее уравнение."
+        },
+        {
           "type": "formula",
           "content": "A(x - x_0) + B(y - y_0) + C(z - z_0) = 0"
         },
