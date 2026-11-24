@@ -5925,3 +5925,33 @@ html.dark .pill {
     bottom: max(12px, env(safe-area-inset-bottom));
   }
 }
+
+.rating-skip {
+  align-self: flex-start;
+  margin-top: 2px;
+  color: var(--muted);
+  border-color: var(--border);
+  background: transparent;
+}
+
+.rating-skip:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.block.method {
+  border: 1px solid #bcd9ee;
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  background: #eef8ff;
+}
+
+html.dark .block.method {
+  background: #1d3446;
+  border-color: #33536b;
+}
+
+.block.method .label {
+  color: var(--accent-ink);
+}

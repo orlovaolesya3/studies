@@ -1,9 +1,10 @@
-const CACHE = 'studia-v2';
+const CACHE = 'studia-v3';
 const CORE = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './lesson-methods.js',
   './sync-config.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
@@ -98,7 +99,13 @@ const CORE = [
   './lessons/prog-memory-raii-01.js',
   './lessons/prog-move-01.js',
   './lessons/prog-modern-01.js',
-  './lessons/prog-oop-01.js'
+  './lessons/prog-oop-01.js',
+  './lessons/la-extra.js',
+  './lessons/prob-extra.js',
+  './lessons/dm-graphs-extra.js',
+  './lessons/algo-graphs-extra.js',
+  './lessons/calc-integral-extra.js',
+  './lessons/prog-extra.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -118,7 +125,6 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
-
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 

@@ -1386,6 +1386,10 @@
       return '<div class="block remember"><div class="label">' + icon('info') + 'Запомнить</div>' +
         '<div class="prose">' + md(block.content) + '</div></div>';
     }
+    if (type === 'method') {
+      return '<div class="block method"><div class="label">' + icon('target') + 'Как решать</div>' +
+        '<div class="prose">' + md(block.content) + '</div></div>';
+    }
     if (type === 'code') {
       return '<div class="block code-block"><div class="label">' + icon('code') + 'Код</div>' +
         '<pre><code>' + esc(block.content) + '</code></pre></div>';
@@ -1577,7 +1581,16 @@
         RATING_ORDER.map(function (rating) {
           return ratingButtonHtml(rating, current);
         }).join('') +
-        '</div></div>';
+        '</div>' +
+        '<button type="button" class="btn ghost rating-skip" data-action="skip-review">' +
+        'Повторять не нужно</button></div>';
+    } else if (lesson.rating === 'skip') {
+      action = '<div class="card completion-card">' +
+        '<div class="completion-icon">' + icon('check') + '</div>' +
+        '<div class="grow"><strong>Повторение отключено</strong>' +
+        '<p class="muted small">Этот урок больше не будет появляться в повторении.</p></div>' +
+        '<button type="button" class="btn primary" data-action="close">К урокам' + icon('arrow') + '</button>' +
+        '</div>';
     } else {
       var nextDue = dayKey(nextInterval(lesson.rating, (state.reviews[l.id] && state.reviews[l.id].interval) || 1));
       action = '<div class="card completion-card">' +
@@ -1946,6 +1959,14 @@
     render();
   }
 
+  function skipReview() {
+    if (!openId) return;
+    state.reviews[openId] = { due: null, interval: 0, skip: true };
+    lesson.rating = 'skip';
+    persist();
+    render();
+  }
+
   function toggleFavorite() {
     if (!openId) return;
     var position = state.favorites.indexOf(openId);
@@ -2022,6 +2043,8 @@
       finishLesson();
     } else if (action === 'rate') {
       rateLesson(target.getAttribute('data-rating'));
+    } else if (action === 'skip-review') {
+      skipReview();
     } else if (action === 'theme') {
       state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
       persist();
